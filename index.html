@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Garenta Araç Kiralama Arama</title>
+    <link rel="stylesheet" href="./style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+    <!-- Flatpickr CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+    />
+    <!-- Choices.js CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"
+    />
+    <style>
+      /* Choices.js stilini özelleştirme (isteğe bağlı) */
+      .choices__input {
+        background-color: white !important; /* Tailwind bg-white ile uyum */
+      }
+      .choices__list--dropdown .choices__item--selectable.is-highlighted {
+        background-color: #fff7ed !important; /* primary-light */
+        color: #fb923c; /* primary */
+      }
+
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        display: none;
+        -webkit-appearance: none;
+      }
+    </style>
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/tr.js"></script>
+  </head>
+  <body class="bg-gray-100">
+    <!-- Changed background color -->
+    <!-- Header -->
+    <header class="bg-white shadow-md">
+      <!-- Increased shadow -->
+      <div class="container mx-auto px-4 py-4">
+        <img
+          src="https://2-a.com.tr/assets/img/brands/1.png"
+          alt="Garenta Logo"
+          class="h-8"
+        />
+      </div>
+    </header>
+
+    <div class="container mx-auto p-4 md:p-6">
+      <!-- Added md padding -->
+      <!-- Arama Formu -->
+      <form
+        id="search-form"
+        class="bg-white p-4 md:p-6 rounded-lg shadow-lg mb-8 grid grid-cols-1 md:grid-cols-4 gap-4 items-end"
+      >
+        <!-- Şehir Seçimi -->
+        <div class="md:col-span-1">
+          <label
+            for="city-select"
+            class="block text-sm font-medium text-gray-600 mb-1"
+            >Şehir</label
+          >
+          <!-- Choices.js bu select'i devralacak -->
+          <select id="city-select" name="citySlug" required class="w-full">
+            <option value="">Şehir Seçiniz...</option>
+            <!-- Placeholder Choices.js tarafından yönetilecek -->
+            <!-- Şehirler buraya JS ile eklenecek -->
+          </select>
+        </div>
+
+        <!-- Alış Tarihi -->
+        <div class="md:col-span-1">
+          <label
+            for="pickup-date"
+            class="block text-sm font-medium text-gray-600 mb-1"
+            >Alış Tarihi</label
+          >
+          <input
+            type="date"
+            id="pickup-date"
+            name="pickupDate"
+            required
+            placeholder="YYYY-AA-GG"
+            class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary focus:ring-1"
+          />
+        </div>
+
+        <!-- İade Tarihi -->
+        <div class="md:col-span-1">
+          <label
+            for="dropoff-date"
+            class="block text-sm font-medium text-gray-600 mb-1"
+            >İade Tarihi</label
+          >
+          <input
+            type="date"
+            id="dropoff-date"
+            name="dropoffDate"
+            required
+            placeholder="YYYY-AA-GG"
+            --
+            Added
+            placeholder
+            --
+            class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary focus:border-primary focus:ring-1"
+            --
+            Added
+            focus:ring-1
+            --
+          />
+        </div>
+
+        <!-- Ara Butonu -->
+        <div class="md:col-span-1">
+          <button
+            type="submit"
+            class="w-full bg-primary hover:bg-primary-dark text-white font-bold py-2.5 px-4 rounded-md shadow-md hover:shadow-lg transition duration-150 ease-in-out"
+          >
+            Ara
+          </button>
+        </div>
+      </form>
+
+      <!-- Arama Kriterleri Gösterim Alanı -->
+      <div
+        id="search-criteria-display"
+        class="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700"
+        style="display: none"
+      >
+        <!-- örn: İstanbul için 29 Nis 2025 10:00 - 8 May 2025 10:00 tarihleri arasında arama yapılıyor... -->
+      </div>
+
+      <!-- Filtreler ve Sıralama -->
+      <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+        <div
+          id="filter-container"
+          class="flex flex-wrap items-center gap-3"
+          style="display: none"
+        >
+          <span class="font-semibold text-gray-600 mr-1 self-center"
+            >Filtrele:</span
+          >
+
+          <!-- Segment Filtresi -->
+          <select
+            id="segment-filter"
+            class="filter-select p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary bg-white shadow-sm"
+          >
+            <option value="all" selected>Segment (Tümü)</option>
+            <!-- Seçenekler JS ile eklenecek -->
+          </select>
+
+          <!-- Yakıt Filtresi -->
+          <select
+            id="fuel-filter"
+            class="filter-select p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary bg-white shadow-sm"
+          >
+            <option value="all" selected>Yakıt (Tümü)</option>
+            <!-- Seçenekler JS ile eklenecek -->
+          </select>
+
+          <!-- Vites Filtresi -->
+          <select
+            id="gear-filter"
+            class="filter-select p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary bg-white shadow-sm"
+          >
+            <option value="all" selected>Vites (Tümü)</option>
+            <!-- Seçenekler JS ile eklenecek -->
+          </select>
+        </div>
+        <div
+          id="sort-container"
+          class="flex items-center gap-2"
+          style="display: none"
+        >
+          <label for="sort-select" class="text-sm font-medium text-gray-600"
+            >Sırala:</label
+          >
+          <select
+            id="sort-select"
+            class="p-2 border border-gray-300 rounded-md text-sm focus:ring-primary focus:border-primary bg-white shadow-sm"
+          >
+            <option value="price_asc" selected>Artan Fiyata Göre</option>
+            <option value="price_desc">Azalan Fiyata Göre</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Sonuç Alanı -->
+      <div id="results-area">
+        <div
+          id="loading-indicator"
+          class="text-center py-16 text-gray-500"
+          style="display: none"
+        >
+          <svg
+            class="animate-spin h-10 w-10 text-primary mx-auto mb-4"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+            <path
+              class="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
+          </svg>
+          Araçlar yükleniyor...
+        </div>
+        <div
+          id="error-message"
+          class="text-center py-10 text-red-700 bg-red-50 border border-red-300 p-4 rounded-lg shadow"
+          style="display: none"
+        ></div>
+        <div
+          id="no-results-message"
+          class="text-center py-10 text-orange-700 bg-orange-50 border border-orange-300 p-4 rounded-lg shadow"
+          style="display: none"
+        >
+          Belirtilen kriterlere uygun araç bulunamadı.
+        </div>
+        <div
+          id="vehicle-results"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+        >
+          <!-- Araç Kartları Buraya JS ile Eklenecek -->
+        </div>
+
+        <!-- Pagination Container -->
+        <div
+          id="pagination-container"
+          class="flex justify-center mt-8"
+          style="display: none"
+        >
+          <div class="flex flex-col items-center">
+            <div
+              id="pagination-loading"
+              class="text-center mb-4"
+              style="display: none"
+            >
+              <svg
+                class="animate-spin h-6 w-6 text-primary mx-auto"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+            </div>
+            <nav aria-label="Page navigation">
+              <ul id="pagination-list" class="flex space-x-1 items-center">
+                <!-- Pagination items will be added here by JavaScript -->
+              </ul>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Choices.js JS (script.js'den önce) -->
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

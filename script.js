@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- Şehirleri Yükleme ---
-  fetch("/api/get-cities")
+  fetch("get_cities.php")
     .then((response) => response.json())
     .then((data) => {
       if (data.success && data.cities) {
@@ -302,7 +302,7 @@ document.addEventListener("DOMContentLoaded", () => {
     vehicleResultsContainer.innerHTML = "";
     document.getElementById("pagination-container").style.display = "none";
 
-    fetch(`/api/search-vehicles?${params.toString()}`)
+    fetch(`api.php?${params.toString()}`)
       .then((response) => {
         if (!response.ok) {
           throw new Error(
@@ -327,6 +327,13 @@ document.addEventListener("DOMContentLoaded", () => {
             // Filtre ve sıralama kontrolleri göster
             document.getElementById("filter-container").style.display = "flex";
             document.getElementById("sort-container").style.display = "flex";
+            
+            // Performans metriklerini göster (eğer varsa)
+            if (data.performance) {
+              const criteriaDisplay = document.getElementById("search-criteria-display");
+              const performanceText = ` (${data.performance.branch_count} şube, ${data.performance.execution_time} sürede)`;
+              criteriaDisplay.textContent += performanceText;
+            }
           } else {
             showNoResults();
             hideSearchCriteria();

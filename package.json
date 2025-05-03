@@ -1,11 +1,11 @@
 {
   "name": "garenta_api",
   "version": "1.0.0",
-  "description": "Garenta Araç Kiralama Uygulaması",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "npx tailwindcss -i ./src/input.css -o ./dist/output.css"
+    "build": "npx tailwindcss -i ./src/input.css -o ./dist/output.css --watch"
   },
   "keywords": [],
   "author": "",
@@ -14,8 +14,5 @@
     "autoprefixer": "^10.4.21",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17"
-  },
-  "dependencies": {
-    "node-fetch": "^2.6.7"
   }
 }

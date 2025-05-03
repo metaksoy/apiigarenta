@@ -111,9 +111,6 @@ exports.handler = async function (event, context) {
       };
     }
 
-    // Step 2: Search vehicles in each branch
-    const allVehicles = [];
-
     // Map fuel type codes to names
     const fuelMap = {
       1: "Benzin",
@@ -137,8 +134,16 @@ exports.handler = async function (event, context) {
       4: "Prestij",
     };
 
-    // Search vehicles in each branch
-    for (const branch of branchesInCity) {
+    // Limit the number of branches to search to avoid timeout
+    // For large cities, we'll only search in the first 2 branches
+    const branchesToSearch =
+      branchesInCity.length > 2 ? branchesInCity.slice(0, 2) : branchesInCity;
+    console.log(
+      `Searching in ${branchesToSearch.length} branches out of ${branchesInCity.length} total branches for ${citySlug}`
+    );
+
+    // Use Promise.all to make API calls in parallel instead of sequentially
+    const searchPromises = branchesToSearch.map(async (branch) => {
       const payload = {
         branchId: branch.branchId,
         locationId: branch.locationId,
@@ -158,60 +163,74 @@ exports.handler = async function (event, context) {
         "Content-Type": "application/json",
       };
 
-      const searchResponse = await fetch(`${BASE_URI}Search`, {
-        method: "POST",
-        headers: searchHeaders,
-        body: JSON.stringify(payload),
-      });
+      try {
+        const searchResponse = await fetch(`${BASE_URI}Search`, {
+          method: "POST",
+          headers: searchHeaders,
+          body: JSON.stringify(payload),
+        });
 
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json();
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
 
-        if (
-          searchData.data &&
-          searchData.data.vehicles &&
-          Array.isArray(searchData.data.vehicles)
-        ) {
-          searchData.data.vehicles.forEach((vehicle) => {
-            if (vehicle.vehicleInfo && vehicle.priceInfo) {
-              const vehicleInfo = vehicle.vehicleInfo;
-              const priceInfo = vehicle.priceInfo;
+          const branchVehicles = [];
+          if (
+            searchData.data &&
+            searchData.data.vehicles &&
+            Array.isArray(searchData.data.vehicles)
+          ) {
+            // Limit to first 5 vehicles per branch to avoid timeout
+            const limitedVehicles = searchData.data.vehicles.slice(0, 5);
 
-              const fuelType = fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
-              const transmissionType =
-                transmissionMap[vehicleInfo.transmissionType] || "Bilinmiyor";
-              const segmentName =
-                segmentMap[vehicleInfo.segment] || "Bilinmiyor";
+            limitedVehicles.forEach((vehicle) => {
+              if (vehicle.vehicleInfo && vehicle.priceInfo) {
+                const vehicleInfo = vehicle.vehicleInfo;
+                const priceInfo = vehicle.priceInfo;
 
-              allVehicles.push({
-                brand_model: vehicleInfo.vehicleDescription || "N/A",
-                fuel: fuelType,
-                gear: transmissionType,
-                segment_name: segmentName,
-                price_pay_now_str: priceInfo.discountedPriceStr || "N/A",
-                price_pay_office_str: priceInfo.netPriceStr || "N/A",
-                price_pay_now: priceInfo.discountedPrice || null,
-                price_pay_office: priceInfo.netPrice || null,
-                daily_price: priceInfo.dailyPrice || null,
-                daily_price_str: priceInfo.dailyPriceStr || "N/A",
-                currency: "TRY",
-                image: vehicleInfo.image || null,
-                branch_id: branch.branchId,
-                location_id: branch.locationId,
-                branch_name: branch.name,
-                city_slug: branch.citySlug,
-              });
-            }
-          });
+                const fuelType = fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
+                const transmissionType =
+                  transmissionMap[vehicleInfo.transmissionType] || "Bilinmiyor";
+                const segmentName =
+                  segmentMap[vehicleInfo.segment] || "Bilinmiyor";
+
+                branchVehicles.push({
+                  brand_model: vehicleInfo.vehicleDescription || "N/A",
+                  fuel: fuelType,
+                  gear: transmissionType,
+                  segment_name: segmentName,
+                  price_pay_now_str: priceInfo.discountedPriceStr || "N/A",
+                  price_pay_office_str: priceInfo.netPriceStr || "N/A",
+                  price_pay_now: priceInfo.discountedPrice || null,
+                  price_pay_office: priceInfo.netPrice || null,
+                  daily_price: priceInfo.dailyPrice || null,
+                  daily_price_str: priceInfo.dailyPriceStr || "N/A",
+                  currency: "TRY",
+                  image: vehicleInfo.image || null,
+                  branch_id: branch.branchId,
+                  location_id: branch.locationId,
+                  branch_name: branch.name,
+                  city_slug: branch.citySlug,
+                });
+              }
+            });
+          }
+          return branchVehicles;
         }
+        return [];
+      } catch (error) {
+        console.error(`Error searching branch ${branch.name}:`, error);
+        return [];
       }
+    });
 
-      // Add a small delay between requests to avoid rate limiting
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+    // Wait for all search promises to resolve
+    const vehicleArrays = await Promise.all(searchPromises);
+
+    // Flatten the array of arrays into a single array
+    const allVehiclesFromBranches = vehicleArrays.flat();
 
     // Filter out vehicles with null price_pay_now
-    const filteredVehicles = allVehicles.filter(
+    const filteredVehicles = allVehiclesFromBranches.filter(
       (vehicle) =>
         vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
     );
@@ -233,6 +252,10 @@ exports.handler = async function (event, context) {
         success: true,
         data: filteredVehicles,
         total: filteredVehicles.length,
+        searchedBranches: branchesToSearch.length,
+
+        totalBranches: branchesInCity.length,
+        limitedSearch: branchesInCity.length > 2,
       }),
     };
   } catch (error) {

@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- Şehirleri Yükleme ---
-  fetch("get_cities.php")
+  fetch("get-cities.js")
     .then((response) => response.json())
     .then((data) => {
       if (data.success && data.cities) {
@@ -327,10 +327,12 @@ document.addEventListener("DOMContentLoaded", () => {
             // Filtre ve sıralama kontrolleri göster
             document.getElementById("filter-container").style.display = "flex";
             document.getElementById("sort-container").style.display = "flex";
-            
+
             // Performans metriklerini göster (eğer varsa)
             if (data.performance) {
-              const criteriaDisplay = document.getElementById("search-criteria-display");
+              const criteriaDisplay = document.getElementById(
+                "search-criteria-display"
+              );
               const performanceText = ` (${data.performance.branch_count} şube, ${data.performance.execution_time} sürede)`;
               criteriaDisplay.textContent += performanceText;
             }

@@ -134,183 +134,113 @@ exports.handler = async function (event, context) {
       4: "Prestij",
     };
 
-    // Search in all branches for the city
-    // Note: This might increase function execution time for cities with many branches
-    const branchesToSearch = branchesInCity;
+    // Limit the number of branches to search to avoid timeout
+    // For large cities, we'll only search in the first 2 branches
+    const branchesToSearch =
+      branchesInCity.length > 2 ? branchesInCity.slice(0, 2) : branchesInCity;
     console.log(
-      `Searching in all ${branchesToSearch.length} branches for ${citySlug}`
+      `Searching in ${branchesToSearch.length} branches out of ${branchesInCity.length} total branches for ${citySlug}`
     );
 
-    // Helper function to add timeout to a promise
-    const promiseWithTimeout = (promise, timeoutMs) => {
-      let timeoutId;
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error(`Operation timed out after ${timeoutMs} ms`));
-        }, timeoutMs);
-      });
+    // Use Promise.all to make API calls in parallel instead of sequentially
+    const searchPromises = branchesToSearch.map(async (branch) => {
+      const payload = {
+        branchId: branch.branchId,
+        locationId: branch.locationId,
+        arrivalBranchId: branch.branchId,
+        arrivalLocationId: branch.locationId,
+        month: null,
+        rentId: null,
+        couponCode: null,
+        collaborationId: null,
+        collaborationReferenceId: null,
+        pickupDate: formattedPickup,
+        dropoffDate: formattedDropoff,
+      };
 
-      return Promise.race([promise, timeoutPromise]).finally(() => {
-        clearTimeout(timeoutId);
-      });
-    };
+      const searchHeaders = {
+        ...headers,
+        "Content-Type": "application/json",
+      };
 
-    // Start timing the execution
-    const startTime = Date.now();
+      try {
+        const searchResponse = await fetch(`${BASE_URI}Search`, {
+          method: "POST",
+          headers: searchHeaders,
+          body: JSON.stringify(payload),
+        });
 
-    // Process branches in batches to avoid overwhelming the system
-    // and to stay within Netlify's 10-second timeout limit
-    const BATCH_SIZE = 23; // Process 5 branches at a time
+        if (searchResponse.ok) {
+          const searchData = await searchResponse.json();
 
-    // Function to process a batch of branches in parallel
-    async function processBranchBatch(branches) {
-      const batchPromises = branches.map(async (branch) => {
-        const payload = {
-          branchId: branch.branchId,
-          locationId: branch.locationId,
-          arrivalBranchId: branch.branchId,
-          arrivalLocationId: branch.locationId,
-          month: null,
-          rentId: null,
-          couponCode: null,
-          collaborationId: null,
-          collaborationReferenceId: null,
-          pickupDate: formattedPickup,
-          dropoffDate: formattedDropoff,
-        };
+          const branchVehicles = [];
+          if (
+            searchData.data &&
+            searchData.data.vehicles &&
+            Array.isArray(searchData.data.vehicles)
+          ) {
+            // Limit to first 5 vehicles per branch to avoid timeout
+            const limitedVehicles = searchData.data.vehicles.slice(0, 5);
 
-        const searchHeaders = {
-          ...headers,
-          "Content-Type": "application/json",
-        };
+            limitedVehicles.forEach((vehicle) => {
+              if (vehicle.vehicleInfo && vehicle.priceInfo) {
+                const vehicleInfo = vehicle.vehicleInfo;
+                const priceInfo = vehicle.priceInfo;
 
-        try {
-          // Add a 3-second timeout for each branch search
-          const searchResponse = await promiseWithTimeout(
-            fetch(`${BASE_URI}Search`, {
-              method: "POST",
-              headers: searchHeaders,
-              body: JSON.stringify(payload),
-            }),
-            300000 // 3 second timeout
-          );
+                const fuelType = fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
+                const transmissionType =
+                  transmissionMap[vehicleInfo.transmissionType] || "Bilinmiyor";
+                const segmentName =
+                  segmentMap[vehicleInfo.segment] || "Bilinmiyor";
 
-          if (searchResponse.ok) {
-            const searchData = await searchResponse.json();
-
-            const branchVehicles = [];
-            if (
-              searchData.data &&
-              searchData.data.vehicles &&
-              Array.isArray(searchData.data.vehicles)
-            ) {
-              // Process all vehicles from this branch
-              searchData.data.vehicles.forEach((vehicle) => {
-                if (vehicle.vehicleInfo && vehicle.priceInfo) {
-                  const vehicleInfo = vehicle.vehicleInfo;
-                  const priceInfo = vehicle.priceInfo;
-
-                  const fuelType =
-                    fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
-                  const transmissionType =
-                    transmissionMap[vehicleInfo.transmissionType] ||
-                    "Bilinmiyor";
-                  const segmentName =
-                    segmentMap[vehicleInfo.segment] || "Bilinmiyor";
-
-                  branchVehicles.push({
-                    brand_model: vehicleInfo.vehicleDescription || "N/A",
-                    fuel: fuelType,
-                    gear: transmissionType,
-                    segment_name: segmentName,
-                    price_pay_now_str: priceInfo.discountedPriceStr || "N/A",
-                    price_pay_office_str: priceInfo.netPriceStr || "N/A",
-                    price_pay_now: priceInfo.discountedPrice || null,
-                    price_pay_office: priceInfo.netPrice || null,
-                    daily_price: priceInfo.dailyPrice || null,
-                    daily_price_str: priceInfo.dailyPriceStr || "N/A",
-                    currency: "TRY",
-                    image: vehicleInfo.image || null,
-                    branch_id: branch.branchId,
-                    location_id: branch.locationId,
-                    branch_name: branch.name,
-                    city_slug: branch.citySlug,
-                  });
-                }
-              });
-            }
-            return branchVehicles;
+                branchVehicles.push({
+                  brand_model: vehicleInfo.vehicleDescription || "N/A",
+                  fuel: fuelType,
+                  gear: transmissionType,
+                  segment_name: segmentName,
+                  price_pay_now_str: priceInfo.discountedPriceStr || "N/A",
+                  price_pay_office_str: priceInfo.netPriceStr || "N/A",
+                  price_pay_now: priceInfo.discountedPrice || null,
+                  price_pay_office: priceInfo.netPrice || null,
+                  daily_price: priceInfo.dailyPrice || null,
+                  daily_price_str: priceInfo.dailyPriceStr || "N/A",
+                  currency: "TRY",
+                  image: vehicleInfo.image || null,
+                  branch_id: branch.branchId,
+                  location_id: branch.locationId,
+                  branch_name: branch.name,
+                  city_slug: branch.citySlug,
+                });
+              }
+            });
           }
-          return [];
-        } catch (error) {
-          console.error(`Error searching branch ${branch.name}:`, error);
-          return [];
+          return branchVehicles;
         }
-      });
-
-      // Wait for all promises in this batch to settle
-      const batchResults = await Promise.allSettled(batchPromises);
-      return batchResults;
-    }
-
-    // Process all branches in batches
-    const allResults = [];
-    for (let i = 0; i < branchesToSearch.length; i += BATCH_SIZE) {
-      const batchBranches = branchesToSearch.slice(i, i + BATCH_SIZE);
-      console.log(
-        `Processing batch ${i / BATCH_SIZE + 1} with ${
-          batchBranches.length
-        } branches`
-      );
-
-      const batchResults = await processBranchBatch(batchBranches);
-      allResults.push(...batchResults);
-
-      // Check if we're approaching the Netlify timeout (8 seconds)
-      const currentTime = Date.now();
-      if (currentTime - startTime > 8000) {
-        console.log(
-          `Approaching Netlify timeout limit. Processed ${
-            i + batchBranches.length
-          }/${branchesToSearch.length} branches.`
-        );
-        break; // Stop processing more batches
+        return [];
+      } catch (error) {
+        console.error(`Error searching branch ${branch.name}:`, error);
+        return [];
       }
-    }
+    });
 
-    // Calculate execution time
-    const executionTime = Date.now() - startTime;
+    // Wait for all search promises to resolve
+    const vehicleArrays = await Promise.all(searchPromises);
 
-    // Process successful results
-    const vehicleArrays = allResults
-      .filter((result) => result.status === "fulfilled")
-      .map((result) => result.value)
-      .flat(); // Flatten the array of arrays
-
-    // Count failed branches    const failedBranches = allResults.filter(
-      (result) => result.status === "rejected"
-    ).length;
-    if (failedBranches > 0) {
-      console.log(`${failedBranches} branch searches failed or timed out`);
-    }
+    // Flatten the array of arrays into a single array
+    const allVehiclesFromBranches = vehicleArrays.flat();
 
     // Filter out vehicles with null price_pay_now
-    const filteredVehicles = vehicleArrays.filter(
+    const filteredVehicles = allVehiclesFromBranches.filter(
       (vehicle) =>
-        vehicle && vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
+        vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
     );
+
     // Sort vehicles by price_pay_now ascending
     filteredVehicles.sort((a, b) => {
       const priceA = a.price_pay_now ?? Number.MAX_SAFE_INTEGER;
       const priceB = b.price_pay_now ?? Number.MAX_SAFE_INTEGER;
       return priceA - priceB;
     });
-
-    // Calculate how many branches were successfully processed
-    const successfulBranches = allResults.filter(
-      (result) => result.status === "fulfilled"
-    ).length;
-    const processedBranches = successfulBranches + failedBranches;
 
     return {
       statusCode: 200,
@@ -322,13 +252,10 @@ exports.handler = async function (event, context) {
         success: true,
         data: filteredVehicles,
         total: filteredVehicles.length,
-        searchedBranches: processedBranches,
-        successfulBranches: successfulBranches,
-        failedBranches: failedBranches,
+        searchedBranches: branchesToSearch.length,
+
         totalBranches: branchesInCity.length,
-        limitedSearch: processedBranches < branchesInCity.length,
-        executionTime: executionTime, // Add execution time to response
-        batchSize: BATCH_SIZE, // Add batch size information
+        limitedSearch: branchesInCity.length > 2,
       }),
     };
   } catch (error) {

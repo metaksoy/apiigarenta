@@ -266,7 +266,9 @@ exports.handler = async function (event, context) {
       }
     }
     
-    // Use Promise.allSettled results
+    // Calculate execution time
+    const executionTime = Date.now() - startTime;
+    
     // Process successful results
     const vehicleArrays = allResults
       .filter(result => result.status === 'fulfilled')
@@ -275,67 +277,14 @@ exports.handler = async function (event, context) {
     
     // Count failed branches
     const failedBranches = allResults.filter(result => result.status === 'rejected').length;
-    if (failedBranches > 0) {
-      console.log(`${failedBranches} branch searches failed or timed out`);
-    }
-    
-    // Calculate execution time
-    const executionTime = Date.now() - startTime;
-                const vehicleInfo = vehicle.vehicleInfo;
-                const priceInfo = vehicle.priceInfo;
 
-                const fuelType = fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
-                const transmissionType =
-                  transmissionMap[vehicleInfo.transmissionType] || "Bilinmiyor";
-                const segmentName =
-                  segmentMap[vehicleInfo.segment] || "Bilinmiyor";
 
-                branchVehicles.push({
-                  brand_model: vehicleInfo.vehicleDescription || "N/A",
-                  fuel: fuelType,
-                  gear: transmissionType,
-                  segment_name: segmentName,
-                  price_pay_now_str: priceInfo.discountedPriceStr || "N/A",
-                  price_pay_office_str: priceInfo.netPriceStr || "N/A",
-                  price_pay_now: priceInfo.discountedPrice || null,
-                  price_pay_office: priceInfo.netPrice || null,
-                  daily_price: priceInfo.dailyPrice || null,
-                  daily_price_str: priceInfo.dailyPriceStr || "N/A",
-                  currency: "TRY",
-                  image: vehicleInfo.image || null,
-                  branch_id: branch.branchId,
-                  location_id: branch.locationId,
-                  branch_name: branch.name,
-                  city_slug: branch.citySlug,
-                });
-              }
-            });
-          }
-          return branchVehicles;
-        }
-        return [];
-      } catch (error) {
-        console.error(`Error searching branch ${branch.name}:`, error);
-        return [];
-      }
-    });
-
-    // Wait for all search promises to resolve
-    // Wait for all search promises to resolve or reject
-    const results = await Promise.allSettled(searchPromises);
-    
-    // Process successful results
-    const vehicleArrays = results
-      .filter(result => result.status === 'fulfilled')
-      .map(result => result.value);
-    
     // Count failed branches
     const failedBranches = results.filter(result => result.status === 'rejected').length;
-    if (failedBranches > 0) {
-      console.log(`${failedBranches} branch searches failed or timed out`);
-    }
+    i          console.log(`${failedBranches} branch searches failed or timed out`);
+    const filteredVehicles = vehicleArrays.flat().filter(
     // Filter out vehicles with null price_pay_now
-    const filteredVehicles = vehicleArrays.filter(
+        vehicle && vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
       (vehicle) =>
         vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
     );

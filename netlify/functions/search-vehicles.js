@@ -178,7 +178,7 @@ exports.handler = async function (event, context) {
             Array.isArray(searchData.data.vehicles)
           ) {
             // Limit to first 5 vehicles per branch to avoid timeout
-            const limitedVehicles = searchData.data.vehicles.slice(0, 5);
+            const limitedVehicles = searchData.data.vehicles.slice(0, 100);
 
             limitedVehicles.forEach((vehicle) => {
               if (vehicle.vehicleInfo && vehicle.priceInfo) {

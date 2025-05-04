@@ -61,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // --- Şehirleri Yükleme ---
-  fetch("get_cities.php")
+  fetch("/.netlify/functions/get-cities")
     .then((response) => response.json())
     .then((data) => {
       if (data.success && data.cities) {

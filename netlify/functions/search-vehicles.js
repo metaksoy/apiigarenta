@@ -135,9 +135,9 @@ exports.handler = async function (event, context) {
     };
 
     // Limit the number of branches to search to avoid timeout
-    // For large cities, we'll only search in the first 2 branches
+    // We'll search in up to 5 branches in parallel
     const branchesToSearch =
-      branchesInCity.length > 2 ? branchesInCity.slice(0, 2) : branchesInCity;
+      branchesInCity.length > 5 ? branchesInCity.slice(0, 5) : branchesInCity;
     console.log(
       `Searching in ${branchesToSearch.length} branches out of ${branchesInCity.length} total branches for ${citySlug}`
     );
@@ -179,10 +179,8 @@ exports.handler = async function (event, context) {
             searchData.data.vehicles &&
             Array.isArray(searchData.data.vehicles)
           ) {
-            // Limit to first 5 vehicles per branch to avoid timeout
-            const limitedVehicles = searchData.data.vehicles.slice(0, 5);
-
-            limitedVehicles.forEach((vehicle) => {
+            // Process all vehicles from this branch
+            searchData.data.vehicles.forEach((vehicle) => {
               if (vehicle.vehicleInfo && vehicle.priceInfo) {
                 const vehicleInfo = vehicle.vehicleInfo;
                 const priceInfo = vehicle.priceInfo;
@@ -255,7 +253,7 @@ exports.handler = async function (event, context) {
         searchedBranches: branchesToSearch.length,
 
         totalBranches: branchesInCity.length,
-        limitedSearch: branchesInCity.length > 2,
+        limitedSearch: branchesInCity.length > 5,
       }),
     };
   } catch (error) {

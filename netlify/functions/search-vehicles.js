@@ -137,7 +137,9 @@ exports.handler = async function (event, context) {
     // Search in all branches for the city
     // Note: This might increase function execution time for cities with many branches
     const branchesToSearch = branchesInCity;
-    console.log(`Searching in all ${branchesToSearch.length} branches for ${citySlug}`);
+    console.log(
+      `Searching in all ${branchesToSearch.length} branches for ${citySlug}`
+    );
 
     // Helper function to add timeout to a promise
     const promiseWithTimeout = (promise, timeoutMs) => {
@@ -159,7 +161,7 @@ exports.handler = async function (event, context) {
     // Process branches in batches to avoid overwhelming the system
     // and to stay within Netlify's 10-second timeout limit
     const BATCH_SIZE = 5; // Process 5 branches at a time
-    
+
     // Function to process a batch of branches in parallel
     async function processBranchBatch(branches) {
       const batchPromises = branches.map(async (branch) => {
@@ -192,10 +194,10 @@ exports.handler = async function (event, context) {
             }),
             3000 // 3 second timeout
           );
-          
+
           if (searchResponse.ok) {
             const searchData = await searchResponse.json();
-            
+
             const branchVehicles = [];
             if (
               searchData.data &&
@@ -207,13 +209,15 @@ exports.handler = async function (event, context) {
                 if (vehicle.vehicleInfo && vehicle.priceInfo) {
                   const vehicleInfo = vehicle.vehicleInfo;
                   const priceInfo = vehicle.priceInfo;
-                  
-                  const fuelType = fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
+
+                  const fuelType =
+                    fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
                   const transmissionType =
-                    transmissionMap[vehicleInfo.transmissionType] || "Bilinmiyor";
+                    transmissionMap[vehicleInfo.transmissionType] ||
+                    "Bilinmiyor";
                   const segmentName =
                     segmentMap[vehicleInfo.segment] || "Bilinmiyor";
-                  
+
                   branchVehicles.push({
                     brand_model: vehicleInfo.vehicleDescription || "N/A",
                     fuel: fuelType,
@@ -243,52 +247,58 @@ exports.handler = async function (event, context) {
           return [];
         }
       });
-      
+
       // Wait for all promises in this batch to settle
       const batchResults = await Promise.allSettled(batchPromises);
       return batchResults;
     }
-    
+
     // Process all branches in batches
     const allResults = [];
     for (let i = 0; i < branchesToSearch.length; i += BATCH_SIZE) {
       const batchBranches = branchesToSearch.slice(i, i + BATCH_SIZE);
-      console.log(`Processing batch ${i/BATCH_SIZE + 1} with ${batchBranches.length} branches`);
-      
+      console.log(
+        `Processing batch ${i / BATCH_SIZE + 1} with ${
+          batchBranches.length
+        } branches`
+      );
+
       const batchResults = await processBranchBatch(batchBranches);
       allResults.push(...batchResults);
-      
+
       // Check if we're approaching the Netlify timeout (8 seconds)
       const currentTime = Date.now();
       if (currentTime - startTime > 8000) {
-        console.log(`Approaching Netlify timeout limit. Processed ${i + batchBranches.length}/${branchesToSearch.length} branches.`);
+        console.log(
+          `Approaching Netlify timeout limit. Processed ${
+            i + batchBranches.length
+          }/${branchesToSearch.length} branches.`
+        );
         break; // Stop processing more batches
       }
     }
-    
+
     // Calculate execution time
     const executionTime = Date.now() - startTime;
-    
+
     // Process successful results
     const vehicleArrays = allResults
-      .filter(result => result.status === 'fulfilled')
-      .map(result => result.value)
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value)
       .flat(); // Flatten the array of arrays
-    
-    // Count failed branches
-    const failedBranches = allResults.filter(result => result.status === 'rejected').length;
 
+    // Count failed branches    const failedBranches = allResults.filter(
+      (result) => result.status === "rejected"
+    ).length;
+    if (failedBranches > 0) {
+      console.log(`${failedBranches} branch searches failed or timed out`);
+    }
 
-    // Count failed branches
-    const failedBranches = results.filter(result => result.status === 'rejected').length;
-    i          console.log(`${failedBranches} branch searches failed or timed out`);
-    const filteredVehicles = vehicleArrays.flat().filter(
     // Filter out vehicles with null price_pay_now
-        vehicle && vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
+    const filteredVehicles = vehicleArrays.filter(
       (vehicle) =>
-        vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
+        vehicle && vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
     );
-
     // Sort vehicles by price_pay_now ascending
     filteredVehicles.sort((a, b) => {
       const priceA = a.price_pay_now ?? Number.MAX_SAFE_INTEGER;
@@ -297,7 +307,9 @@ exports.handler = async function (event, context) {
     });
 
     // Calculate how many branches were successfully processed
-    const successfulBranches = allResults.filter(result => result.status === 'fulfilled').length;
+    const successfulBranches = allResults.filter(
+      (result) => result.status === "fulfilled"
+    ).length;
     const processedBranches = successfulBranches + failedBranches;
 
     return {
@@ -316,7 +328,7 @@ exports.handler = async function (event, context) {
         totalBranches: branchesInCity.length,
         limitedSearch: processedBranches < branchesInCity.length,
         executionTime: executionTime, // Add execution time to response
-        batchSize: BATCH_SIZE // Add batch size information
+        batchSize: BATCH_SIZE, // Add batch size information
       }),
     };
   } catch (error) {

@@ -160,7 +160,7 @@ exports.handler = async function (event, context) {
 
     // Process branches in batches to avoid overwhelming the system
     // and to stay within Netlify's 10-second timeout limit
-    const BATCH_SIZE = 5; // Process 5 branches at a time
+    const BATCH_SIZE = 23; // Process 5 branches at a time
 
     // Function to process a batch of branches in parallel
     async function processBranchBatch(branches) {
@@ -192,7 +192,7 @@ exports.handler = async function (event, context) {
               headers: searchHeaders,
               body: JSON.stringify(payload),
             }),
-            3000 // 3 second timeout
+            300000 // 3 second timeout
           );
 
           if (searchResponse.ok) {

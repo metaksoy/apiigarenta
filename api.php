@@ -14,9 +14,6 @@ require_once __DIR__ . '/src/GarentaService.php';
 header('Content-Type: application/json');
 
 try {
-    // Start timing the request
-    $startTime = microtime(true);
-    
     // Initialize dependencies
     $httpClient = new HttpClient();
     $dataParser = new DataParser();
@@ -39,19 +36,12 @@ try {
 
     // Get vehicles based on citySlug
     $allVehicles = $garentaService->getAvailableVehiclesByCity($citySlug, $formattedPickup, $formattedDropoff);
-    
-    // Calculate execution time
-    $executionTime = microtime(true) - $startTime;
 
-    // Return JSON response with all vehicles and performance metrics
+    // Return JSON response with all vehicles
     echo json_encode([
         'success' => true,
         'data' => $allVehicles,
-        'total' => count($allVehicles),
-        'performance' => [
-            'execution_time' => round($executionTime, 2) . ' seconds',
-            'branch_count' => count($allVehicles) > 0 ? count(array_unique(array_column($allVehicles, 'branch_name'))) : 0
-        ]
+        'total' => count($allVehicles)
     ]);
 
 } catch (Exception $e) {

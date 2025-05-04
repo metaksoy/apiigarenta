@@ -6,6 +6,16 @@ class HttpClient
 {
     private const BASE_URI = 'https://apigw.garenta.com.tr/';
     private const TENANT_ID = '4cdb69b2-f39b-4f2f-8302-b6198501bcc9'; // Provided in example
+    
+    /**
+     * Returns the base URI for API requests.
+     * 
+     * @return string
+     */
+    public function getBaseUri(): string
+    {
+        return self::BASE_URI;
+    }
 
     /**
      * Performs a GET request.
@@ -83,7 +93,7 @@ class HttpClient
      *
      * @return array
      */
-    private function getBaseHeaders(): array
+    public function getBaseHeaders(): array
     {
         // Mimic browser headers from the example
         return [

@@ -87,7 +87,7 @@ class GarentaService
 
     /**
      * Gets all available vehicles from all branches in a specific city for the given dates.
-     * Uses parallel requests to improve performance for cities with many branches.
+     * Uses parallel requests to reduce total request time for cities with many branches.
      *
      * @param string $citySlug The slug of the city to search in (e.g., 'istanbul', 'ankara').
      * @param string $pickupDate Formatted as 'DD.MM.YYYY HH:MM'
@@ -120,91 +120,26 @@ class GarentaService
             return [];
         }
 
-        // Reindex array to have sequential keys
+        // Reindex array to have sequential numeric keys
         $branchesInCity = array_values($branchesInCity);
         
-        // Determine if we should use parallel requests based on branch count
-        $branchCount = count($branchesInCity);
-        $useParallel = $branchCount > 3; // Only use parallel for cities with more than 3 branches
-        
+        // Paralel istek için grup boyutu (aynı anda kaç istek gönderileceği)
+        $batchSize = 5; // Aynı anda 5 istek gönder
+        $totalBranches = count($branchesInCity);
         $allVehicles = [];
         
-        if ($useParallel) {
-            // Parallel request implementation
-            $allVehicles = $this->getVehiclesWithParallelRequests($branchesInCity, $pickupDate, $dropoffDate);
-        } else {
-            // Sequential request implementation (original method)
-            $allVehicles = $this->getVehiclesSequentially($branchesInCity, $pickupDate, $dropoffDate);
-        }
-
-        // Remove vehicles with null price_pay_now before sorting
-        $allVehicles = array_filter($allVehicles, fn($vehicle) => isset($vehicle['price_pay_now']) && $vehicle['price_pay_now'] !== null);
-
-        // Sort vehicles by price_pay_now ascending
-        usort($allVehicles, function ($a, $b) {
-            // Handle potential nulls defensively, treating null as max value for sorting
-            $priceA = $a['price_pay_now'] ?? PHP_INT_MAX;
-            $priceB = $b['price_pay_now'] ?? PHP_INT_MAX;
-            return $priceA <=> $priceB;
-        });
-
-        return $allVehicles;
-    }
-    
-    /**
-     * Gets vehicles from branches using sequential requests.
-     *
-     * @param array $branches Array of branch data
-     * @param string $pickupDate Formatted as 'DD.MM.YYYY HH:MM'
-     * @param string $dropoffDate Formatted as 'DD.MM.YYYY HH:MM'
-     * @return array List of all available vehicles from the branches
-     */
-    private function getVehiclesSequentially(array $branches, string $pickupDate, string $dropoffDate): array
-    {
-        $allVehicles = [];
-        
-        foreach ($branches as $branch) { 
-            $vehiclesFromBranch = $this->searchVehicles($branch['branchId'], $branch['locationId'], $pickupDate, $dropoffDate);
-            if (!empty($vehiclesFromBranch)) {
-                // Add branch info to each vehicle from this specific branch
-                $vehiclesWithBranchInfo = [];
-                foreach ($vehiclesFromBranch as $vehicle) {
-                    $vehicle['branch_id'] = $branch['branchId'];
-                    $vehicle['location_id'] = $branch['locationId'];
-                    $vehicle['branch_name'] = $branch['name']; // Şube adı eklendi
-                    $vehicle['city_slug'] = $branch['citySlug']; // City slug eklendi
-                    $vehiclesWithBranchInfo[] = $vehicle;
-                }
-                $allVehicles = array_merge($allVehicles, $vehiclesWithBranchInfo);
-            }
-        }
-        
-        return $allVehicles;
-    }
-    
-    /**
-     * Gets vehicles from branches using parallel requests for better performance.
-     *
-     * @param array $branches Array of branch data
-     * @param string $pickupDate Formatted as 'DD.MM.YYYY HH:MM'
-     * @param string $dropoffDate Formatted as 'DD.MM.YYYY HH:MM'
-     * @return array List of all available vehicles from the branches
-     */
-    private function getVehiclesWithParallelRequests(array $branches, string $pickupDate, string $dropoffDate): array
-    {
-        $allVehicles = [];
-        $batchSize = 5; // Process 5 branches in parallel
-        $totalBranches = count($branches);
-        
-        // Process branches in batches
-        for ($i = 0; $i < $totalBranches; $i += $batchSize) {
-            $batch = array_slice($branches, $i, $batchSize);
-            $multiHandle = curl_multi_init();
-            $curlHandles = [];
-            $responses = [];
+        // Şubeleri gruplara bölerek paralel istekler gönder
+        for ($offset = 0; $offset < $totalBranches; $offset += $batchSize) {
+            // Mevcut grup için şubeleri al
+            $currentBatch = array_slice($branchesInCity, $offset, $batchSize);
             
-            // Setup curl handles for each branch in the batch
-            foreach ($batch as $index => $branch) {
+            // Paralel istekler için curl_multi kullan
+            $mh = curl_multi_init();
+            $curlHandles = [];
+            $branchData = [];
+            
+            // Her şube için bir curl isteği oluştur
+            foreach ($currentBatch as $index => $branch) {
                 $payload = [
                     "branchId" => $branch['branchId'],
                     "locationId" => $branch['locationId'],
@@ -219,77 +154,79 @@ class GarentaService
                     "dropoffDate" => $dropoffDate
                 ];
                 
-                $url = 'https://apigw.garenta.com.tr/Search';
-                $payloadJson = json_encode($payload);
-                
+                $url = $this->httpClient->getBaseUri() . 'Search';
                 $ch = curl_init($url);
+                
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
                 curl_setopt($ch, CURLOPT_POST, true);
-                curl_setopt($ch, CURLOPT_POSTFIELDS, $payloadJson);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
                 curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
                 curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-                curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                    'Accept: application/json, text/plain, */*',
-                    'Accept-Language: tr',
-                    'Cache-Control: no-cache',
-                    'Pragma: no-cache',
-                    'Content-Type: application/json',
-                    'Content-Length: ' . strlen($payloadJson),
-                    'X-Tenant-Id: 4cdb69b2-f39b-4f2f-8302-b6198501bcc9',
-                    'X-Web-Device-Info: ' . json_encode([
-                        "browser" => "Chrome",
-                        "webDeviceType" => "desktop",
-                        "os" => "Windows",
-                        "sessionId" => time()
-                    ]),
-                    'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                ]);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, array_merge(
+                    $this->httpClient->getBaseHeaders(),
+                    [
+                        'Content-Type: application/json',
+                        'Content-Length: ' . strlen(json_encode($payload))
+                    ]
+                ));
                 
                 $curlHandles[$index] = $ch;
-                $responses[$index] = ['branch' => $branch, 'response' => ''];
-                curl_multi_add_handle($multiHandle, $ch);
+                $branchData[$index] = $branch;
+                curl_multi_add_handle($mh, $ch);
             }
             
-            // Execute the parallel requests
+            // İstekleri çalıştır
             $running = null;
             do {
-                curl_multi_exec($multiHandle, $running);
-                curl_multi_select($multiHandle); // Wait for activity on any connection
+                curl_multi_exec($mh, $running);
+                curl_multi_select($mh); // CPU kullanımını azaltmak için bekle
             } while ($running > 0);
             
-            // Get the responses and process them
+            // Sonuçları topla
             foreach ($curlHandles as $index => $ch) {
-                $responses[$index]['response'] = curl_multi_getcontent($ch);
-                curl_multi_remove_handle($multiHandle, $ch);
-                curl_close($ch);
+                $response = curl_multi_getcontent($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
                 
-                $branch = $responses[$index]['branch'];
-                $jsonResponse = $responses[$index]['response'];
-                
-                if ($jsonResponse) {
-                    $vehiclesFromBranch = $this->dataParser->parseVehicles($jsonResponse);
+                if ($httpCode >= 200 && $httpCode < 300 && $response !== false) {
+                    $vehiclesFromBranch = $this->dataParser->parseVehicles($response);
                     
                     if (!empty($vehiclesFromBranch)) {
                         // Add branch info to each vehicle
+                        $branch = $branchData[$index];
+                        $vehiclesWithBranchInfo = [];
+                        
                         foreach ($vehiclesFromBranch as $vehicle) {
                             $vehicle['branch_id'] = $branch['branchId'];
                             $vehicle['location_id'] = $branch['locationId'];
                             $vehicle['branch_name'] = $branch['name'];
                             $vehicle['city_slug'] = $branch['citySlug'];
-                            $allVehicles[] = $vehicle;
+                            $vehiclesWithBranchInfo[] = $vehicle;
                         }
+                        
+                        $allVehicles = array_merge($allVehicles, $vehiclesWithBranchInfo);
                     }
+                } else {
+                    error_log("HTTP request failed for branch: {$branchData[$index]['name']}. HTTP Code: {$httpCode}");
                 }
+                
+                curl_multi_remove_handle($mh, $ch);
+                curl_close($ch);
             }
             
-            curl_multi_close($multiHandle);
-            
-            // Small delay between batches to avoid overwhelming the server
-            if ($i + $batchSize < $totalBranches) {
-                usleep(100000); // 0.1 seconds
-            }
+            curl_multi_close($mh);
         }
         
+        // Remove vehicles with null price_pay_now before sorting
+        $allVehicles = array_filter($allVehicles, fn($vehicle) => isset($vehicle['price_pay_now']) && $vehicle['price_pay_now'] !== null);
+
+        // Sort vehicles by price_pay_now ascending
+        usort($allVehicles, function ($a, $b) {
+            // Handle potential nulls defensively, treating null as max value for sorting
+            $priceA = $a['price_pay_now'] ?? PHP_INT_MAX;
+            $priceB = $b['price_pay_now'] ?? PHP_INT_MAX;
+            return $priceA <=> $priceB;
+        });
+
         return $allVehicles;
     }
 }

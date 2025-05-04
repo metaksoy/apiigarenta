@@ -134,16 +134,14 @@ exports.handler = async function (event, context) {
       4: "Prestij",
     };
 
-    // Limit the number of branches to search to avoid timeout
-    // For large cities, we'll only search in the first 2 branches
-    const branchesToSearch =
-      branchesInCity.length > 2 ? branchesInCity.slice(0, 2) : branchesInCity;
+    // Use all branches in the city
+    const branchesToSearch = branchesInCity;
     console.log(
-      `Searching in ${branchesToSearch.length} branches out of ${branchesInCity.length} total branches for ${citySlug}`
+      `Searching in ${branchesToSearch.length} branches for ${citySlug}`
     );
 
-    // Use Promise.all to make API calls in parallel instead of sequentially
-    const searchPromises = branchesToSearch.map(async (branch) => {
+    // Function to search a single branch
+    const searchBranch = async (branch) => {
       const payload = {
         branchId: branch.branchId,
         locationId: branch.locationId,
@@ -221,13 +219,76 @@ exports.handler = async function (event, context) {
         console.error(`Error searching branch ${branch.name}:`, error);
         return [];
       }
-    });
+    };
 
-    // Wait for all search promises to resolve
-    const vehicleArrays = await Promise.all(searchPromises);
+    // Function to process branches in chunks with delay between chunks
+    const processBranchesInChunks = async (
+      branches,
+      chunkSize,
+      useParallel
+    ) => {
+      const allVehicles = [];
+      const chunks = [];
 
-    // Flatten the array of arrays into a single array
-    const allVehiclesFromBranches = vehicleArrays.flat();
+      // Split branches into chunks of chunkSize
+      for (let i = 0; i < branches.length; i += chunkSize) {
+        chunks.push(branches.slice(i, i + chunkSize));
+      }
+
+      console.log(
+        `Processing ${branches.length} branches in ${chunks.length} chunks of ${chunkSize}`
+      );
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        console.log(
+          `Processing chunk ${i + 1}/${chunks.length} with ${
+            chunk.length
+          } branches`
+        );
+
+        let chunkResults;
+
+        if (useParallel) {
+          // Process branches in this chunk in parallel
+          const chunkPromises = chunk.map((branch) => searchBranch(branch));
+          chunkResults = await Promise.all(chunkPromises);
+        } else {
+          // Process branches in this chunk sequentially
+          chunkResults = [];
+          for (const branch of chunk) {
+            const result = await searchBranch(branch);
+            chunkResults.push(result);
+          }
+        }
+
+        // Add results from this chunk to all vehicles
+        allVehicles.push(...chunkResults.flat());
+
+        // Add delay between chunks (except after the last chunk)
+        if (i < chunks.length - 1) {
+          console.log(`Waiting 200ms before processing next chunk...`);
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+      }
+
+      return allVehicles;
+    };
+
+    // Determine whether to use parallel requests based on branch count
+    const useParallel = branchesToSearch.length > 3;
+    console.log(
+      `Using ${useParallel ? "parallel" : "sequential"} requests for ${
+        branchesToSearch.length
+      } branches`
+    );
+
+    // Process branches in chunks of 5 with 200ms delay between chunks
+    const allVehiclesFromBranches = await processBranchesInChunks(
+      branchesToSearch,
+      5,
+      useParallel
+    );
 
     // Filter out vehicles with null price_pay_now
     const filteredVehicles = allVehiclesFromBranches.filter(
@@ -255,7 +316,7 @@ exports.handler = async function (event, context) {
         searchedBranches: branchesToSearch.length,
 
         totalBranches: branchesInCity.length,
-        limitedSearch: branchesInCity.length > 2,
+        parallelSearch: branchesInCity.length > 3,
       }),
     };
   } catch (error) {

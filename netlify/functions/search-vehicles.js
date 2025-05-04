@@ -267,8 +267,8 @@ exports.handler = async function (event, context) {
 
         // Add delay between chunks (except after the last chunk)
         if (i < chunks.length - 1) {
-          console.log(`Waiting 200ms before processing next chunk...`);
-          await new Promise((resolve) => setTimeout(resolve, 200));
+          console.log(`Waiting 500ms before processing next chunk...`);
+          await new Promise((resolve) => setTimeout(resolve, 500));
         }
       }
 

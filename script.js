@@ -321,6 +321,8 @@ document.addEventListener("DOMContentLoaded", () => {
             searchedBranches: data.searchedBranches || 0,
             successfulBranches: data.successfulBranches || 0,
             failedBranches: data.failedBranches || 0,
+            executionTime: data.executionTime || 0,
+            batchSize: data.batchSize || 0
           };
           // Tüm araçları sakla
           allFetchedVehicles = data.data;
@@ -700,10 +702,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Add branch information if available
     let branchInfo = "";
+    let performanceInfo = "";
     if (window.lastSearchStats) {
       const stats = window.lastSearchStats;
       if (stats.totalBranches > 0) {
         branchInfo = ` (${stats.successfulBranches}/${stats.totalBranches} şubeden araçlar gösteriliyor)`;
+        
+        // Add execution time if available
+        if (stats.executionTime) {
+          const executionTimeSeconds = (stats.executionTime / 1000).toFixed(2);
+          performanceInfo = ` - İşlem süresi: ${executionTimeSeconds} saniye`;
+          
+          // Add batch info if available
+          if (stats.batchSize) {
+            performanceInfo += `, Grup boyutu: ${stats.batchSize}`;
+          }
+        }
       }
     }
 
@@ -711,7 +725,7 @@ document.addEventListener("DOMContentLoaded", () => {
       pickupDate
     )} - ${formatDateDisplay(
       dropoffDate
-    )} tarihleri arasında (${rentalDays} gün) arama yapılıyor.${branchInfo}`;
+    )} tarihleri arasında (${rentalDays} gün) arama yapılıyor.${branchInfo}${performanceInfo}`;
     criteriaDisplay.style.display = "block";
   }
   function hideSearchCriteria() {

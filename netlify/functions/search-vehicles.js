@@ -137,9 +137,7 @@ exports.handler = async function (event, context) {
     // Search in all branches for the city
     // Note: This might increase function execution time for cities with many branches
     const branchesToSearch = branchesInCity;
-      `Searching in all ${branchesToSearch.length} branches for ${citySlug}`
-      `Searching in all ${branchesToSearch.length} branches for ${citySlug}`
-    );
+    console.log(`Searching in all ${branchesToSearch.length} branches for ${citySlug}`);
 
     // Helper function to add timeout to a promise
     const promiseWithTimeout = (promise, timeoutMs) => {
@@ -155,49 +153,134 @@ exports.handler = async function (event, context) {
       });
     };
 
-    // Use Promise.allSettled to make API calls in parallel and handle errors gracefully
-      const payload = {
-        branchId: branch.branchId,
-        locationId: branch.locationId,
-        arrivalBranchId: branch.branchId,
-        arrivalLocationId: branch.locationId,
-        month: null,
-        rentId: null,
-        couponCode: null,
-        collaborationId: null,
-        collaborationReferenceId: null,
-        pickupDate: formattedPickup,
-        dropoffDate: formattedDropoff,
-      };
+    // Start timing the execution
+    const startTime = Date.now();
 
-      const searchHeaders = {
-        ...headers,
-        "Content-Type": "application/json",
-      };
+    // Process branches in batches to avoid overwhelming the system
+    // and to stay within Netlify's 10-second timeout limit
+    const BATCH_SIZE = 5; // Process 5 branches at a time
+    
+    // Function to process a batch of branches in parallel
+    async function processBranchBatch(branches) {
+      const batchPromises = branches.map(async (branch) => {
+        const payload = {
+          branchId: branch.branchId,
+          locationId: branch.locationId,
+          arrivalBranchId: branch.branchId,
+          arrivalLocationId: branch.locationId,
+          month: null,
+          rentId: null,
+          couponCode: null,
+          collaborationId: null,
+          collaborationReferenceId: null,
+          pickupDate: formattedPickup,
+          dropoffDate: formattedDropoff,
+        };
 
-      try {
-        const searchResponse = await fetch(`${BASE_URI}Search`, {
-        // Add a 3-second timeout for each branch search
-        const searchResponse = await promiseWithTimeout(
-          fetch(`${BASE_URI}Search`, {
-            method: "POST",
-            headers: searchHeaders,
-            body: JSON.stringify(payload),
-          }),
-          3000 // 3 second timeout
-        );
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json();
+        const searchHeaders = {
+          ...headers,
+          "Content-Type": "application/json",
+        };
 
-          const branchVehicles = [];
-          if (
-            searchData.data &&
-            searchData.data.vehicles &&
-            Array.isArray(searchData.data.vehicles)
-          ) {
-            // Process all vehicles from this branch
-            searchData.data.vehicles.forEach((vehicle) => {
-              if (vehicle.vehicleInfo && vehicle.priceInfo) {
+        try {
+          // Add a 3-second timeout for each branch search
+          const searchResponse = await promiseWithTimeout(
+            fetch(`${BASE_URI}Search`, {
+              method: "POST",
+              headers: searchHeaders,
+              body: JSON.stringify(payload),
+            }),
+            3000 // 3 second timeout
+          );
+          
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            
+            const branchVehicles = [];
+            if (
+              searchData.data &&
+              searchData.data.vehicles &&
+              Array.isArray(searchData.data.vehicles)
+            ) {
+              // Process all vehicles from this branch
+              searchData.data.vehicles.forEach((vehicle) => {
+                if (vehicle.vehicleInfo && vehicle.priceInfo) {
+                  const vehicleInfo = vehicle.vehicleInfo;
+                  const priceInfo = vehicle.priceInfo;
+                  
+                  const fuelType = fuelMap[vehicleInfo.fuelType] || "Bilinmiyor";
+                  const transmissionType =
+                    transmissionMap[vehicleInfo.transmissionType] || "Bilinmiyor";
+                  const segmentName =
+                    segmentMap[vehicleInfo.segment] || "Bilinmiyor";
+                  
+                  branchVehicles.push({
+                    brand_model: vehicleInfo.vehicleDescription || "N/A",
+                    fuel: fuelType,
+                    gear: transmissionType,
+                    segment_name: segmentName,
+                    price_pay_now_str: priceInfo.discountedPriceStr || "N/A",
+                    price_pay_office_str: priceInfo.netPriceStr || "N/A",
+                    price_pay_now: priceInfo.discountedPrice || null,
+                    price_pay_office: priceInfo.netPrice || null,
+                    daily_price: priceInfo.dailyPrice || null,
+                    daily_price_str: priceInfo.dailyPriceStr || "N/A",
+                    currency: "TRY",
+                    image: vehicleInfo.image || null,
+                    branch_id: branch.branchId,
+                    location_id: branch.locationId,
+                    branch_name: branch.name,
+                    city_slug: branch.citySlug,
+                  });
+                }
+              });
+            }
+            return branchVehicles;
+          }
+          return [];
+        } catch (error) {
+          console.error(`Error searching branch ${branch.name}:`, error);
+          return [];
+        }
+      });
+      
+      // Wait for all promises in this batch to settle
+      const batchResults = await Promise.allSettled(batchPromises);
+      return batchResults;
+    }
+    
+    // Process all branches in batches
+    const allResults = [];
+    for (let i = 0; i < branchesToSearch.length; i += BATCH_SIZE) {
+      const batchBranches = branchesToSearch.slice(i, i + BATCH_SIZE);
+      console.log(`Processing batch ${i/BATCH_SIZE + 1} with ${batchBranches.length} branches`);
+      
+      const batchResults = await processBranchBatch(batchBranches);
+      allResults.push(...batchResults);
+      
+      // Check if we're approaching the Netlify timeout (8 seconds)
+      const currentTime = Date.now();
+      if (currentTime - startTime > 8000) {
+        console.log(`Approaching Netlify timeout limit. Processed ${i + batchBranches.length}/${branchesToSearch.length} branches.`);
+        break; // Stop processing more batches
+      }
+    }
+    
+    // Use Promise.allSettled results
+    // Process successful results
+    const vehicleArrays = allResults
+      .filter(result => result.status === 'fulfilled')
+      .map(result => result.value)
+      .flat(); // Flatten the array of arrays
+    
+    // Count failed branches
+    const failedBranches = allResults.filter(result => result.status === 'rejected').length;
+    if (failedBranches > 0) {
+      console.log(`${failedBranches} branch searches failed or timed out`);
+    }
+    
+    // Calculate execution time
+    const executionTime = Date.now() - startTime;
                 const vehicleInfo = vehicle.vehicleInfo;
                 const priceInfo = vehicle.priceInfo;
 
@@ -251,11 +334,8 @@ exports.handler = async function (event, context) {
     if (failedBranches > 0) {
       console.log(`${failedBranches} branch searches failed or timed out`);
     }
-    // Flatten the array of arrays into a single array
-    const allVehiclesFromBranches = vehicleArrays.flat();
-
     // Filter out vehicles with null price_pay_now
-    const filteredVehicles = allVehiclesFromBranches.filter(
+    const filteredVehicles = vehicleArrays.filter(
       (vehicle) =>
         vehicle.price_pay_now !== null && vehicle.price_pay_now !== undefined
     );
@@ -267,6 +347,10 @@ exports.handler = async function (event, context) {
       return priceA - priceB;
     });
 
+    // Calculate how many branches were successfully processed
+    const successfulBranches = allResults.filter(result => result.status === 'fulfilled').length;
+    const processedBranches = successfulBranches + failedBranches;
+
     return {
       statusCode: 200,
       headers: {
@@ -277,11 +361,13 @@ exports.handler = async function (event, context) {
         success: true,
         data: filteredVehicles,
         total: filteredVehicles.length,
-        searchedBranches: branchesToSearch.length,
-
-        successfulBranches: branchesToSearch.length - failedBranches,
-        failedBranches: failedBranches,        totalBranches: branchesInCity.length,
-        limitedSearch: branchesInCity.length > 5,
+        searchedBranches: processedBranches,
+        successfulBranches: successfulBranches,
+        failedBranches: failedBranches,
+        totalBranches: branchesInCity.length,
+        limitedSearch: processedBranches < branchesInCity.length,
+        executionTime: executionTime, // Add execution time to response
+        batchSize: BATCH_SIZE // Add batch size information
       }),
     };
   } catch (error) {

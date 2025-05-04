@@ -134,16 +134,28 @@ exports.handler = async function (event, context) {
       4: "Prestij",
     };
 
-    // Limit the number of branches to search to avoid timeout
-    // We'll search in up to 5 branches in parallel
-    const branchesToSearch =
-      branchesInCity.length > 5 ? branchesInCity.slice(0, 5) : branchesInCity;
-    console.log(
-      `Searching in ${branchesToSearch.length} branches out of ${branchesInCity.length} total branches for ${citySlug}`
+    // Search in all branches for the city
+    // Note: This might increase function execution time for cities with many branches
+    const branchesToSearch = branchesInCity;
+      `Searching in all ${branchesToSearch.length} branches for ${citySlug}`
+      `Searching in all ${branchesToSearch.length} branches for ${citySlug}`
     );
 
-    // Use Promise.all to make API calls in parallel instead of sequentially
-    const searchPromises = branchesToSearch.map(async (branch) => {
+    // Helper function to add timeout to a promise
+    const promiseWithTimeout = (promise, timeoutMs) => {
+      let timeoutId;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Operation timed out after ${timeoutMs} ms`));
+        }, timeoutMs);
+      });
+
+      return Promise.race([promise, timeoutPromise]).finally(() => {
+        clearTimeout(timeoutId);
+      });
+    };
+
+    // Use Promise.allSettled to make API calls in parallel and handle errors gracefully
       const payload = {
         branchId: branch.branchId,
         locationId: branch.locationId,
@@ -165,11 +177,15 @@ exports.handler = async function (event, context) {
 
       try {
         const searchResponse = await fetch(`${BASE_URI}Search`, {
-          method: "POST",
-          headers: searchHeaders,
-          body: JSON.stringify(payload),
-        });
-
+        // Add a 3-second timeout for each branch search
+        const searchResponse = await promiseWithTimeout(
+          fetch(`${BASE_URI}Search`, {
+            method: "POST",
+            headers: searchHeaders,
+            body: JSON.stringify(payload),
+          }),
+          3000 // 3 second timeout
+        );
         if (searchResponse.ok) {
           const searchData = await searchResponse.json();
 
@@ -222,8 +238,19 @@ exports.handler = async function (event, context) {
     });
 
     // Wait for all search promises to resolve
-    const vehicleArrays = await Promise.all(searchPromises);
-
+    // Wait for all search promises to resolve or reject
+    const results = await Promise.allSettled(searchPromises);
+    
+    // Process successful results
+    const vehicleArrays = results
+      .filter(result => result.status === 'fulfilled')
+      .map(result => result.value);
+    
+    // Count failed branches
+    const failedBranches = results.filter(result => result.status === 'rejected').length;
+    if (failedBranches > 0) {
+      console.log(`${failedBranches} branch searches failed or timed out`);
+    }
     // Flatten the array of arrays into a single array
     const allVehiclesFromBranches = vehicleArrays.flat();
 
@@ -252,7 +279,8 @@ exports.handler = async function (event, context) {
         total: filteredVehicles.length,
         searchedBranches: branchesToSearch.length,
 
-        totalBranches: branchesInCity.length,
+        successfulBranches: branchesToSearch.length - failedBranches,
+        failedBranches: failedBranches,        totalBranches: branchesInCity.length,
         limitedSearch: branchesInCity.length > 5,
       }),
     };

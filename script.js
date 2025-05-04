@@ -315,6 +315,13 @@ document.addEventListener("DOMContentLoaded", () => {
         hideLoading();
         isFetching = false;
         if (data.success && data.data) {
+          // Store search statistics for display
+          window.lastSearchStats = {
+            totalBranches: data.totalBranches || 0,
+            searchedBranches: data.searchedBranches || 0,
+            successfulBranches: data.successfulBranches || 0,
+            failedBranches: data.failedBranches || 0,
+          };
           // Tüm araçları sakla
           allFetchedVehicles = data.data;
 
@@ -691,11 +698,20 @@ document.addEventListener("DOMContentLoaded", () => {
       citySelectElement.options[citySelectElement.selectedIndex];
     const cityName = selectedOption ? selectedOption.text : citySlug; // Seçenek bulunamazsa slug'ı kullan
 
+    // Add branch information if available
+    let branchInfo = "";
+    if (window.lastSearchStats) {
+      const stats = window.lastSearchStats;
+      if (stats.totalBranches > 0) {
+        branchInfo = ` (${stats.successfulBranches}/${stats.totalBranches} şubeden araçlar gösteriliyor)`;
+      }
+    }
+
     criteriaDisplay.textContent = `${cityName} için ${formatDateDisplay(
       pickupDate
     )} - ${formatDateDisplay(
       dropoffDate
-    )} tarihleri arasında (${rentalDays} gün) arama yapılıyor.`;
+    )} tarihleri arasında (${rentalDays} gün) arama yapılıyor.${branchInfo}`;
     criteriaDisplay.style.display = "block";
   }
   function hideSearchCriteria() {

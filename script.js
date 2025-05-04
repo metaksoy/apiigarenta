@@ -302,7 +302,7 @@ document.addEventListener("DOMContentLoaded", () => {
     vehicleResultsContainer.innerHTML = "";
     document.getElementById("pagination-container").style.display = "none";
 
-    fetch(`api.php?${params.toString()}`)
+    fetch(`/.netlify/functions/search-vehicles?${params.toString()}`)
       .then((response) => {
         if (!response.ok) {
           throw new Error(
